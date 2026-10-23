@@ -177,10 +177,13 @@ def call_arguments(content: str, paren_offset: int, close: int | None = None) ->
 
     ``None`` when the argument list does not close, so a recogniser can tell a
     scanner failure from a call with no arguments. *close* is the matching
-    ``)`` when the caller has already found it.
+    ``)`` when the caller has already found it. A ``{`` at *paren_offset*
+    opens a composite literal (Go ``sarama.ProducerMessage{Topic: t}``), whose
+    fields are read as its arguments.
     """
     if close is None:
-        close = match_paren(content, paren_offset)
+        closer = "}" if content[paren_offset] == "{" else ")"
+        close = match_paren(content, paren_offset, closer=closer)
     if close < 0:
         return None
     inner = content[paren_offset + 1 : close]
@@ -627,11 +630,14 @@ class Arg:
 
     ``keys`` match a keyword argument (``queue='jobs'``, ``topics = "a"``) or a
     key of a map-literal argument (``{ topic: 'a' }``, ``['queue' => 'a']``).
-    A value that is an array literal yields each element.
+    A value that is an array literal yields each element. ``variadic`` reads
+    every positional argument from ``pos`` on (``ConsumeTopics("a", "b")``),
+    keyword arguments left out.
     """
 
     keys: tuple[str, ...] = ()
     pos: int | None = None
+    variadic: bool = False
 
 
 # One map entry's key: a quoted string or an identifier, then `:` or `=>`.
@@ -661,6 +667,25 @@ def _map_entries(text: str) -> list[str] | None:
     return None
 
 
+# A typed collection literal's head, before its `{`: `new[]`, `new string[]`,
+# `new List<string>` (C#, Java arrays), `[]string` (Go).
+_TYPED_COLLECTION_RE = re.compile(
+    r"(?:new\s*(?:[A-Za-z_][\w.]*\s*(?:<[^<>]*>)?)?\s*(?:\[\s*\])?|\[\]\s*[A-Za-z_][\w.]*)\s*(?=\{)"
+)
+# A keyword argument, which a variadic read leaves out (`bootstrap_servers=x`).
+_KEYWORD_ARG_RE = re.compile(r"^[A-Za-z_]\w*\s*=(?!=)")
+
+
+def _elements(value: str) -> list[str]:
+    """*value*'s elements if it is an array or typed collection literal, else ``[value]``."""
+    head = _TYPED_COLLECTION_RE.match(value)
+    if head is not None and value.endswith("}"):
+        value = value[head.end() :]
+    if _bracketed(value) and _map_entries(value) is None:
+        return [e.strip() for e in split_top_level(value[1:-1], ",") if e.strip()]
+    return [value]
+
+
 def select_argument(args: list[str], arg: Arg) -> list[str]:
     """The source text of the value(s) *arg* selects from *args*, arrays expanded."""
     value: str | None = None
@@ -674,13 +699,14 @@ def select_argument(args: list[str], arg: Arg) -> list[str]:
                     break
             if value is not None:
                 break
+    if value is None and arg.variadic and arg.pos is not None:
+        rest = [a for a in args[arg.pos :] if not _KEYWORD_ARG_RE.match(a)]
+        return [e for a in rest for e in _elements(a)]
     if value is None and arg.pos is not None and arg.pos < len(args):
         value = args[arg.pos]
     if value is None:
         return []
-    if _bracketed(value) and _map_entries(value) is None:
-        return [e.strip() for e in split_top_level(value[1:-1], ",") if e.strip()]
-    return [value]
+    return _elements(value)
 
 
 def resolve_argument(

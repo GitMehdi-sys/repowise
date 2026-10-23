@@ -339,7 +339,9 @@ support a score, a cycle verdict or an empty impact set.
 1. Pick the contract type and create one module in `extractors/http/`, `topic/`,
    `socket/`, `grpc/` or `data/`. A broker or client that fits an existing table
    shape (`TopicCall`, `SocketCall`, the gRPC stub rules in `grpc/languages.py`) is
-   rows in a table, not new code.
+   rows in a table, not new code. A client whose methods are too common to read on
+   any receiver (`send`, `produce`) is a `ReceiverCall` row: read on the names the
+   file declares with the client's type.
 2. Declare `name` and `extensions` (from `extractors/langs.py`).
 3. Declare `requires`: tokens one of which every match needs, such as the library's
    import or the decorator's name. Each table row declares its own. Use
