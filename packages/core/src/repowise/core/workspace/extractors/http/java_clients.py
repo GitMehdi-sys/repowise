@@ -263,14 +263,27 @@ def _feign_base(args: str) -> tuple[str, str] | None:
     prefix = strings.get("path", "")
     if "${" in prefix or ("path" not in strings and _names_key(args, "path")):
         return None
+    return _feign_host(args, strings), prefix
+
+
+def _feign_host(args: str, strings: dict[str, str]) -> str:
+    """The base URL a Feign client sends to: its ``url``, else its service name, else ``""``."""
     if "url" in strings:
-        return strings["url"].rstrip("/"), prefix
-    if _names_key(args, "url"):
-        return "", prefix
+        return strings["url"].rstrip("/")
     name = strings.get("name") or strings.get("value") or ""
-    if _SERVICE_ID_RE.fullmatch(name):
-        return f"http://{name.lower()}", prefix
-    return "", prefix
+    if _names_key(args, "url") or not _SERVICE_ID_RE.fullmatch(name):
+        return ""
+    return f"http://{name.lower()}"
+
+
+def _composed_paths(
+    class_paths: list[tuple[int, int, tuple[str, ...] | None]], route: RouteMatch, prefix: str
+) -> Iterator[str]:
+    """Each concrete path *route* reaches under its type prefixes and the client *prefix*."""
+    for type_prefix in spring_route_prefixes(class_paths, route.offset) or ():
+        path = compose_prefix(prefix, compose_prefix(type_prefix, route.path or ""))
+        if path.strip("/"):
+            yield path
 
 
 def _interface_rows(
@@ -293,10 +306,7 @@ def _interface_rows(
         if base is None or verb is None or verb.lower() not in VERBS:
             continue
         url_base, prefix = base
-        for type_prefix in spring_route_prefixes(class_paths, route.offset) or ():
-            path = compose_prefix(prefix, compose_prefix(type_prefix, route.path or ""))
-            if not path.strip("/"):
-                continue
+        for path in _composed_paths(class_paths, route, prefix):
             yield ClientCallMatch(
                 client=client,
                 # The resolver reads a literal, so hand it one.
