@@ -118,7 +118,8 @@ _BASE_PARAM_RE = re.compile(
 )
 _METHOD_NAME_RE = re.compile(r"\b([A-Za-z_]\w*)\s*(?:<[^<>()]*>)?\s*$")
 # A method taking the base type publishes only if its name says so; a logger does not.
-_SINK_NAME_RE = re.compile(r"Publish|Send|Save|Enqueue|Raise|Dispatch|Emit")
+_SINK_VERBS = ("Publish", "Send", "Save", "Enqueue", "Raise", "Dispatch", "Emit")
+_SINK_NAME_RE = re.compile("|".join(_SINK_VERBS))
 # Words that precede a name without declaring it (`return e;`, `await e;`).
 _NOT_A_TYPE = r"(?!(?:return|await|throw|yield|else|new|in|out|ref|is|as|case|goto)\b)"
 _NEW_RE = re.compile(r"\bnew\s+(?:global::)?(?:\w+\.)*(?P<type>[A-Za-z_]\w*)\s*[({]")
@@ -265,7 +266,7 @@ def _passes_to_sink(c: _Construction, sinks: set[str]) -> bool:
         scope = m.start()
     end = _block_end(content, scope)
     names = "|".join(sorted(map(re.escape, sinks)))
-    call = re.compile(rf"\b(?:{names})\s*\(\s*(?:[^(),]*,\s*)?@?{var}\s*[,)]")
+    call = re.compile(rf"\b(?:{names})\s*\(\s*(?:[^()]*,\s*)?@?{var}\s*[,)]")
     return any(not c.ctx.in_comment(m.start()) for m in call.finditer(content, c.offset, end))
 
 
@@ -304,7 +305,8 @@ class CSharpEventDialect:
     name = _BROKER
     extensions = CSHARP
     calls = SUBSCRIPTIONS
-    requires = (*EVENT_BASES, *rows_gate(SUBSCRIPTIONS), "Publish")
+    # A publisher file may name neither the base nor `Publish`, only an outbox method.
+    requires = (*EVENT_BASES, *rows_gate(SUBSCRIPTIONS), *_SINK_VERBS)
 
     def repo_pass(self) -> _EventPass:
         return _EventPass()

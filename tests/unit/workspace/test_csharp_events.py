@@ -279,3 +279,37 @@ def test_only_a_method_named_for_publishing_is_a_publish_call(tmp_path: Path) ->
         },
     )
     assert rows == []
+
+
+def test_a_file_publishing_only_through_an_outbox_method_is_read(tmp_path: Path) -> None:
+    # The handler names neither the event base nor `Publish`: the outbox method is its only tie.
+    rows = _repo(
+        tmp_path,
+        "ordering",
+        {
+            "Events.cs": _event("Ordering", "OrderPaid"),
+            "IOutbox.cs": "public interface IOutbox\n{\n    Task AddAndSaveEventAsync(IntegrationEvent evt);\n}\n",
+            "Handler.cs": (
+                "class H {\n  async Task Run(int id) {\n"
+                "    var e = new OrderPaid(id);\n"
+                "    await _outbox.AddAndSaveEventAsync(e);\n  }\n}\n"
+            ),
+        },
+    )
+    assert _rows(rows) == {("provider", "topic::orderpaid", "Handler.cs", 3)}
+
+
+def test_the_event_variable_may_follow_several_arguments(tmp_path: Path) -> None:
+    rows = _repo(
+        tmp_path,
+        "svc",
+        {
+            "Events.cs": _event("Svc"),
+            "Pub.cs": (
+                "class P {\n  async Task Run(int id) {\n"
+                "    var e = new OrderPaidIntegrationEvent(id);\n"
+                '    await bus.PublishAsync(tenantId, "x", e);\n  }\n}\n'
+            ),
+        },
+    )
+    assert _rows(rows) == {("provider", _PAID, "Pub.cs", 3)}
