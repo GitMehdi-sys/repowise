@@ -29,7 +29,7 @@ from .fastapi import FastApiDialect
 from .flask import FlaskDialect
 from .go import GoDialect
 from .go_clients import GoClientsDialect
-from .java_clients import JavaClientsDialect
+from .java_clients import JavaClientsDialect, SpringClientsDialect
 from .jaxrs import JaxRsDialect
 from .js_clients import JsClientsDialect
 from .kotlin_clients import KotlinClientsDialect
@@ -87,6 +87,7 @@ CONSUMER_DIALECTS: tuple[ContractDialect, ...] = (
     KotlinClientsDialect(),
     PhpClientsDialect(),
     ApexCalloutsDialect(),
+    SpringClientsDialect(),
 )
 
 
