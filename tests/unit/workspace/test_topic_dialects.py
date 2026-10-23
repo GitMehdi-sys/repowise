@@ -306,6 +306,10 @@ class TestGoAmqp:
             "",  # declared in another file
             'q, err := ch.QueueDeclare("a", true, false, false, false, nil)\n'
             "q := other()\n",  # bound to something else too
+            'q, err := ch.QueueDeclare("a", true, false, false, false, nil)\n'
+            "func bind(ch *amqp.Channel, q amqp.Queue) {\n",  # a parameter of that name
+            'q, err := ch.QueueDeclare("a", true, false, false, false, nil)\n'
+            "for _, q := range queues {\n",  # a loop variable of that name
         ],
     )
     def test_an_unsettled_declared_queue_binds_nothing(self, tmp_path: Path, declare: str) -> None:

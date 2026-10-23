@@ -6,7 +6,7 @@ pika ``result.method.queue`` after ``result = ch.queue_declare(queue='orders')``
 The queue is read from the file's declarations of that receiver when every one
 names the same queue and the file settles it. A server-named queue (``""``),
 a receiver declared with two names, or one the file also binds to anything
-else, stays unread.
+else (an assignment, a parameter, a loop variable), stays unread.
 """
 
 from __future__ import annotations
@@ -39,6 +39,46 @@ def _assignment_re(receiver: str, call: str) -> re.Pattern[str]:
     )
 
 
+# A function's parameter list: `func f(`, `func (r *T) f(`, `def f(`,
+# `function f(`, or an arrow's `(a, b) =>` (group `arrow`).
+_SIGNATURE_RE = re.compile(
+    r"\b(?:func\s*(?:\([^()]*\)\s*)?[A-Za-z_]\w*|def\s+[A-Za-z_]\w*|function\s*[\w$]*)\s*\("
+    r"|\((?P<arrow>[^()]*)\)\s*=>"
+)
+# A parameter's name: its first identifier (`q amqp.Queue`, `*args`, `result: R = None`).
+_PARAM_NAME_RE = re.compile(r"\s*(?:\*{1,2}|\.\.\.)?([A-Za-z_$][\w$]*)")
+
+
+@lru_cache(maxsize=256)
+def _other_binding_re(receiver: str) -> re.Pattern[str]:
+    # A loop, `as` or single-parameter arrow binding (`for q in`, `as q`, `q =>`).
+    r = re.escape(receiver)
+    return re.compile(
+        rf"\b(?:as|for)\s+(?:[\w$]+\s*,\s*)?{r}\b|\b(?:const|let|var)\s+{r}\s+(?:of|in)\b"
+        rf"|(?<![\w$.]){r}\s*=>"
+    )
+
+
+def _bound_otherwise(ctx: ScanContext, receiver: str) -> bool:
+    """Whether the file binds *receiver* as a parameter or loop variable anywhere.
+
+    Ceiling: a JS class method's parameters (``consume(q) {``) are not read.
+    """
+    content = ctx.content
+    if _other_binding_re(receiver).search(content):
+        return True
+    for m in _SIGNATURE_RE.finditer(content):
+        if m.group("arrow") is not None:
+            params = m.group("arrow").split(",")
+        else:
+            params = call_arguments(content, m.end() - 1) or []
+        for p in params:
+            name = _PARAM_NAME_RE.match(p)
+            if name is not None and name.group(1) == receiver:
+                return True
+    return False
+
+
 @dataclass(frozen=True)
 class QueueDeclaration:
     """*call* declares a queue, named at *name*; its result's *member* names it after."""
@@ -57,6 +97,8 @@ class QueueDeclaration:
         receiver, dot, member = raw[0].partition(".")
         if not dot or member != self.member or not _RECEIVER_RE.fullmatch(receiver):
             return []
+        if _bound_otherwise(ctx, receiver):
+            return []  # a parameter of that name may hold another queue (file scope)
         found: set[str] = set()
         for m in _assignment_re(receiver, self.call).finditer(ctx.content):
             if ctx.in_comment(m.start()):

@@ -161,6 +161,13 @@ class TestPythonConstants:
         src = "class P:\n    QUEUE = 'jobs'\n    def __init__(self, q):\n        self.QUEUE = q\n"
         constants = string_constants(src, PYTHON_SYNTAX)
         assert resolve_string("self.QUEUE", PYTHON_SYNTAX, constants) is None
+        assert resolve_string("cls.QUEUE", PYTHON_SYNTAX, constants) is None
+
+    def test_an_instance_attribute_keeps_the_module_constant_it_copies(self) -> None:
+        src = "EXCHANGE = 'orders'\nclass P:\n    def __init__(self):\n        self.EXCHANGE = EXCHANGE\n"
+        constants = string_constants(src, PYTHON_SYNTAX)
+        assert resolve_string("EXCHANGE", PYTHON_SYNTAX, constants) == "orders"
+        assert resolve_string("self.EXCHANGE", PYTHON_SYNTAX, constants) is None
 
     def test_self_is_not_a_member_prefix_in_js(self) -> None:
         assert resolve_string("self.QUEUE", JS_SYNTAX, {"QUEUE": "'jobs'"}) is None

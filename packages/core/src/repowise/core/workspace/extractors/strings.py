@@ -245,6 +245,11 @@ def _interpolates(prefix: str, quote: str, syntax: StringSyntax) -> bool:
     )
 
 
+# The value recorded for a `self.X` the file assigns but does not settle: it
+# resolves to nothing, so `self.X` is refused rather than read as a bare `X`.
+_UNSETTLED = ""
+
+
 def _lookup(name: str, constants: dict[str, str], syntax: StringSyntax) -> str | None:
     const = constants.get(name)
     if const is None and name.startswith("$"):
@@ -252,7 +257,10 @@ def _lookup(name: str, constants: dict[str, str], syntax: StringSyntax) -> str |
     if const is None:
         for prefix in syntax.self_prefixes:
             if name.startswith(prefix):
-                return constants.get(name[len(prefix) :])  # a class's own member
+                # A class's own member: its `self.X` binding first, else the bare `X`.
+                bare = name[len(prefix) :]
+                own = constants.get(syntax.self_prefixes[0] + bare)
+                return own if own is not None else constants.get(bare)
     return const
 
 
@@ -432,10 +440,10 @@ def string_constants(
         # cannot tell which one reaches the use site.
         into[name] = None if name in into or resolve_string(rhs, syntax) is None else rhs
     for name, rhs in owned.items():
-        if rhs is None or name in seen:
-            seen[name] = None  # a class attribute a method rebinds folds in no form
-        else:
-            seen[syntax.self_prefixes[0] + name] = rhs
+        # A `self.X` that does not settle, or that a class or module `X` also
+        # assigns, blocks the `self.X` lookup alone: the bare `X` keeps folding.
+        unsettled = rhs is None or name in seen
+        seen[syntax.self_prefixes[0] + name] = _UNSETTLED if unsettled else rhs
     if syntax.members is not None:
         for m in syntax.members.finditer(text):
             if code is None and on_comment_line(content, m.start()):
@@ -761,8 +769,9 @@ JS_SYNTAX = StringSyntax(
 # folded. An upper-case name is a constant by convention and may be unspaced
 # (``EXCHANGE='robot-shop'``). A line after one ending in an open bracket or a
 # comma continues a call or literal, so it assigns nothing. ``self.X = <expr>``
-# folds ``self.X`` alone, and retires a class attribute ``X`` it rebinds;
-# ``self.X`` and ``cls.X`` read the class attribute.
+# folds ``self.X`` alone; one that does not settle, or whose ``X`` is also
+# assigned bare, refuses ``self.X`` and leaves the bare ``X`` as it was.
+# ``self.X`` and ``cls.X`` otherwise read the class attribute ``X``.
 PYTHON_SYNTAX = StringSyntax(
     prefixes="fFrRbBuU",
     template_prefixes="f",
