@@ -51,7 +51,9 @@ class StringSyntax:
     trailing decoration from the right-hand side (Ruby's ``.freeze``).
     ``members`` locates a constant object or enum (``const Q = {``,
     ``enum Q {``), ending at its opening brace; each ``key: value`` or
-    ``key = value`` entry folds as ``Q.key``.
+    ``key = value`` entry folds as ``Q.key``. ``self_prefixes`` read a
+    class's own member (PHP ``self::X``, Python ``self.X``), looked up as the
+    bare name the class body assigns.
     """
 
     quotes: str = "\"'"
@@ -68,6 +70,7 @@ class StringSyntax:
     assignment: re.Pattern[str] | None = None
     assignment_strip: re.Pattern[str] | None = None
     members: re.Pattern[str] | None = None
+    self_prefixes: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -242,12 +245,14 @@ def _interpolates(prefix: str, quote: str, syntax: StringSyntax) -> bool:
     )
 
 
-def _lookup(name: str, constants: dict[str, str]) -> str | None:
+def _lookup(name: str, constants: dict[str, str], syntax: StringSyntax) -> str | None:
     const = constants.get(name)
     if const is None and name.startswith("$"):
         const = constants.get(name[1:])  # a PHP variable, keyed without its sigil
-    if const is None and name.startswith(("self::", "static::")):
-        const = constants.get(name.partition("::")[2])  # a PHP class constant
+    if const is None:
+        for prefix in syntax.self_prefixes:
+            if name.startswith(prefix):
+                return constants.get(name[len(prefix) :])  # a class's own member
     return const
 
 
@@ -258,7 +263,7 @@ def _fold(expr: str, syntax: StringSyntax, constants: dict[str, str]) -> str:
     the corpus needs a second level, and a half-folded template would be wrong.
     """
     expr = expr.strip()
-    const = _lookup(expr, constants)
+    const = _lookup(expr, constants, syntax)
     if const is not None:
         lit = _parse_literal(const, syntax)
         text = _literal_text(lit, syntax, {}) if lit is not None else None
@@ -379,7 +384,7 @@ def resolve_string(
     if NAME_RE.fullmatch(text):
         # A bare name. Its value resolved without constants when it was
         # recorded, so this step cannot reach another bare name.
-        const = _lookup(text, constants)
+        const = _lookup(text, constants, syntax)
         if const is not None:
             return resolve_string(const, syntax, constants)
     return None
@@ -413,6 +418,8 @@ def string_constants(
         return {}
     text = content if code is None else code
     seen: dict[str, str | None] = {}
+    # `self.X = ...` (group `own`): kept apart, so it never folds a bare `X`.
+    owned: dict[str, str | None] = {}
     for m in syntax.assignment.finditer(text):
         if code is None and on_comment_line(content, m.start()):
             continue  # an example in a doc comment is not a binding
@@ -420,9 +427,15 @@ def string_constants(
         rhs = content[m.start("rhs") : m.end("rhs")].strip()
         if syntax.assignment_strip is not None:
             rhs = syntax.assignment_strip.sub("", rhs).strip()
+        into = owned if m.groupdict().get("own") else seen
         # A second assignment retires the name whatever it assigns: the reader
         # cannot tell which one reaches the use site.
-        seen[name] = None if name in seen or resolve_string(rhs, syntax) is None else rhs
+        into[name] = None if name in into or resolve_string(rhs, syntax) is None else rhs
+    for name, rhs in owned.items():
+        if rhs is None or name in seen:
+            seen[name] = None  # a class attribute a method rebinds folds in no form
+        else:
+            seen[syntax.self_prefixes[0] + name] = rhs
     if syntax.members is not None:
         for m in syntax.members.finditer(text):
             if code is None and on_comment_line(content, m.start()):
@@ -741,10 +754,15 @@ JS_SYNTAX = StringSyntax(
     ),
 )
 
-# ``NAME = <expr>`` at any indentation, RHS to end of line. The whitespace
-# around ``=`` is required, which excludes the usual unspaced keyword argument
-# on its own line (``url=str(resp.url),``) that otherwise reads as a second
-# assignment and retires the very name being folded.
+# ``NAME = <expr>`` at any indentation, RHS to end of line. A name with a
+# lower-case letter needs whitespace around ``=``, which excludes the usual
+# unspaced keyword argument on its own line (``url=str(resp.url),``) that
+# otherwise reads as a second assignment and retires the very name being
+# folded. An upper-case name is a constant by convention and may be unspaced
+# (``EXCHANGE='robot-shop'``). A line after one ending in an open bracket or a
+# comma continues a call or literal, so it assigns nothing. ``self.X = <expr>``
+# folds ``self.X`` alone, and retires a class attribute ``X`` it rebinds;
+# ``self.X`` and ``cls.X`` read the class attribute.
 PYTHON_SYNTAX = StringSyntax(
     prefixes="fFrRbBuU",
     template_prefixes="f",
@@ -752,9 +770,12 @@ PYTHON_SYNTAX = StringSyntax(
     refuse=_ESCAPED_BRACE_RE,
     refuse_prefixes="b",
     assignment=re.compile(
-        r"^[ \t]*(?P<name>[A-Za-z_]\w*)(?:[ \t]*:[^=\n]+)?[ \t]+=[ \t]+(?P<rhs>.*)$",
+        r"^(?<![(\[{,]\n)[ \t]*(?P<own>(?:self|cls)\.)?"
+        r"(?P<name>[A-Z_][A-Z0-9_]*(?=[ \t]*=(?!=))|[A-Za-z_]\w*(?=(?:[ \t]*:[^=\n]+)?[ \t]+=[ \t]))"
+        r"(?:[ \t]*:[^=\n]+)?[ \t]*=[ \t]*(?P<rhs>.*)$",
         re.MULTILINE,
     ),
+    self_prefixes=("self.", "cls."),
 )
 
 RUST_SYNTAX = StringSyntax(
@@ -831,6 +852,7 @@ PHP_SYNTAX = StringSyntax(
     assignment=re.compile(
         r"(?:\bconst[ \t]+|\$)(?P<name>[A-Za-z_]\w*)[ \t]*=(?!=)[ \t]*(?P<rhs>[^;\n]+);"
     ),
+    self_prefixes=("self::", "static::"),
 )
 
 _SYNTAX_BY_LANGUAGE: tuple[tuple[frozenset[str], StringSyntax], ...] = (
