@@ -105,6 +105,41 @@ def _imported(content: str) -> list[tuple[re.Pattern[str], re.Pattern[str]]]:
     return [(ctor, typed) for path, ctor, typed in _ROUTER_RES if f'"{path}' in content]
 
 
+class _RouterNames:
+    """Which names hold a router, replayed through the file's bindings in order."""
+
+    def __init__(self, content: str, imported: list[tuple[re.Pattern[str], re.Pattern[str]]]):
+        self._bindings = _bindings(content)
+        self._imported = imported
+        self._next = 0
+        self._routers: dict[str, bool] = {}
+        # A parameter's binding is undone at its body's end: (end, seq, name, prior).
+        self._restores: list[tuple[int, int, str, bool]] = []
+
+    def _step(self, offset: int) -> bool:
+        """Apply the next restore or binding before *offset*; False when none is left."""
+        nxt = self._bindings[self._next][0] if self._next < len(self._bindings) else offset
+        if self._restores and self._restores[0][0] < min(nxt, offset):
+            _end, _seq, name, prior = heapq.heappop(self._restores)
+            self._routers[name] = prior
+            return True
+        if nxt >= offset:
+            return False
+        _at, name, m, typed, scope_end = self._bindings[self._next]
+        if scope_end is not None:
+            prior = self._routers.get(name, False)
+            heapq.heappush(self._restores, (scope_end, self._next, name, prior))
+        self._routers[name] = _is_router(m, typed, self._imported, self._routers)
+        self._next += 1
+        return True
+
+    def is_router(self, name: str | None, offset: int) -> bool:
+        """Whether *name* holds a router at *offset*; offsets must not decrease."""
+        while self._step(offset):
+            pass
+        return self._routers.get(name or "", False)
+
+
 def title_case_routes(content: str) -> Iterator[RouteMatch]:
     """chi / fiber ``router.Get("/path", handler)`` registrations in *content*.
 
@@ -115,25 +150,9 @@ def title_case_routes(content: str) -> Iterator[RouteMatch]:
     imported = _imported(content)
     if not imported:
         return
-    bindings = _bindings(content)
-    routers: dict[str, bool] = {}
-    restores: list[tuple[int, int, str, bool]] = []  # heap of (end, seq, name, prior)
-    i = 0
+    names = _RouterNames(content, imported)
     for route in go_route_matches(_TITLE_ROUTE_RE, content):
-        while True:
-            nxt = bindings[i][0] if i < len(bindings) else len(content)
-            if restores and restores[0][0] < min(nxt, route.offset):
-                _end, _seq, name, prior = heapq.heappop(restores)
-                routers[name] = prior
-            elif nxt < route.offset:
-                _at, name, m, typed, scope_end = bindings[i]
-                if scope_end is not None:
-                    heapq.heappush(restores, (scope_end, i, name, routers.get(name, False)))
-                routers[name] = _is_router(m, typed, imported, routers)
-                i += 1
-            else:
-                break
-        if routers.get(route.receiver or "", False):
+        if names.is_router(route.receiver, route.offset):
             yield route
 
 

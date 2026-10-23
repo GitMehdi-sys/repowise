@@ -58,6 +58,18 @@ def _prefix(
     return groups.get(receiver, "")
 
 
+def _handler(route: RouteMatch) -> str | None:
+    """A wrapped handler names the middleware, not the route's own function."""
+    return None if route.handler_call else route.handler
+
+
+def _method(verb: str) -> str | None:
+    """The recorded method for *verb*: ``*`` when verbless; gin's ``Any``, OPTIONS and HEAD are not recorded."""
+    if verb in GO_VERBLESS:
+        return "*"
+    return verb if verb in HTTP_METHODS else None
+
+
 def _unreadable_groups(groups: Sequence[GroupMatch]) -> set[str]:
     """Group variables whose prefix, or an ancestor's, is not a literal."""
     refused = {g.var for g in groups if g.prefix is None}
@@ -101,31 +113,23 @@ class GoDialect:
         routes = chain(go_routes(content), title_case_routes(content), gorilla_routes(content))
         out: list[Contract] = []
         for route in outside_comments(ctx, routes):
-            if route.receiver in refused:
-                continue  # served under a prefix this cannot read
-            if route.verb in GO_VERBLESS:
-                method = "*"
-            elif route.verb in HTTP_METHODS:
-                method = route.verb
-            else:
-                continue  # gin's `Any`, and OPTIONS/HEAD, are not recorded here
+            method = _method(route.verb)
+            if method is None or route.receiver in refused:
+                continue  # an unrecorded verb, or a prefix this cannot read
             path = route.path if route.path is not None else _expression_path(route, strings)
             if path is None:
                 continue
+            # An empty path under a group is still that group's route, so the
+            # emptiness rule is `build_provider_contract`'s, after stitching —
+            # the same order ASP.NET's MapGroup uses.
+            prefix = _prefix(route.receiver or "", route.offset, scopes, prefixes)
             c = build_provider_contract(
                 ctx,
                 method=method,
-                # An empty path under a group is still that group's route, so
-                # the emptiness rule is `build_provider_contract`'s, after
-                # stitching — the same order ASP.NET's MapGroup uses.
-                path_raw=compose_prefix(
-                    _prefix(route.receiver or "", route.offset, scopes, prefixes), path
-                ),
+                path_raw=compose_prefix(prefix, path),
                 framework="go",
                 line=line_at(content, route.offset),
-                # A wrapped handler names the middleware, not the route's own
-                # function, so binding by it would be wrong.
-                handler=None if route.handler_call else route.handler,
+                handler=_handler(route),
             )
             if c is not None:
                 out.append(c)
