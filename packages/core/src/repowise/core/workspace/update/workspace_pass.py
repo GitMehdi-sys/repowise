@@ -47,6 +47,7 @@ from .state import (
     read_repo_state,
     reconcile_repo_head_commit,
     stamp_workspace_entry,
+    stored_index_counts,
     sync_workspace_state_from_disk,
 )
 
@@ -337,6 +338,11 @@ async def _update_stale_repo(update_pass: _RepoUpdatePass, repo: _StaleRepo) -> 
 
             # Update workspace config entry
             if result.updated:
+                # Report what the store holds, as `workspace list` does; the
+                # run's own parse figures are 0/0 when nothing needed re-parsing.
+                counts = await stored_index_counts(path)
+                if counts is not None:
+                    result.file_count, result.symbol_count = counts
                 entry = update_pass.ws_config.get_repo(alias)
                 if entry is not None:
                     stamp_workspace_entry(entry, path, new_head)

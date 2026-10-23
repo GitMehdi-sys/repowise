@@ -361,6 +361,67 @@ class TestUpdateWorkspace:
         saved_state = json.loads((repo / ".repowise" / "state.json").read_text(encoding="utf-8"))
         assert saved_state["phase_timings"]["run"] >= 0
 
+    def test_reports_stored_counts_not_run_figures(self, tmp_path: Path) -> None:
+        """A commit with nothing to re-parse reports 0/0 from the run; the result
+        carries the store's files and symbols, the figures `workspace list` shows."""
+        import asyncio
+
+        from repowise.core.persistence import (
+            create_engine,
+            create_session_factory,
+            get_session,
+            init_db,
+            upsert_repository,
+        )
+        from repowise.core.persistence.database import resolve_db_url
+        from repowise.core.persistence.models import GraphNode
+        from tests.unit.persistence.helpers import make_wiki_symbol
+
+        repo = _make_git_repo(tmp_path, "backend")
+        old_head = get_head_commit(repo)
+        _write_state(repo, old_head)
+        _add_commit(repo, "notes.txt")
+        ws_config = WorkspaceConfig(
+            repos=[RepoEntry(path="backend", alias="backend", last_commit_at_index=old_head)],
+        )
+        ws_config.save(tmp_path)
+
+        async def _seed() -> None:
+            engine = create_engine(resolve_db_url(repo))
+            await init_db(engine)
+            try:
+                async with get_session(create_session_factory(engine)) as session:
+                    row = await upsert_repository(
+                        session, name="backend", local_path=str(repo), head_commit=old_head
+                    )
+                    session.add_all([
+                        GraphNode(repository_id=row.id, node_id="a.py", language="python"),
+                        GraphNode(repository_id=row.id, node_id="b.py", language="python"),
+                        # An import target is not an indexed file.
+                        GraphNode(repository_id=row.id, node_id="requests", language="external"),
+                        *(make_wiki_symbol(row.id, "a.py", n) for n in ("f", "g", "h")),
+                    ])
+                    await session.flush()
+            finally:
+                await engine.dispose()
+
+        asyncio.run(_seed())
+        done: list[RepoUpdateResult] = []
+
+        async def _run():
+            with patch(
+                "repowise.core.workspace.update.workspace_pass.update_single_repo_index",
+                new_callable=AsyncMock,
+                return_value=RepoUpdateResult(alias="backend", updated=True),
+            ):
+                return await update_workspace(
+                    tmp_path, ws_config, run_hooks=False, on_repo_done=done.append
+                )
+
+        results = asyncio.run(_run())
+        assert (results[0].file_count, results[0].symbol_count) == (2, 3)
+        assert (done[0].file_count, done[0].symbol_count) == (2, 3)
+
     def test_detects_config_only_staleness(self, tmp_path: Path) -> None:
         """A workspace member with no new commit still runs when its local
         configuration changed."""
