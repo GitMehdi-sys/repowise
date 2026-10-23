@@ -111,9 +111,10 @@ LANGUAGES: tuple[_Language, ...] = (
                   "ts:@GrpcMethod('{service}', '{method}')", "ts_decorator", _ROUTE_REGISTRATION,
                   method_group=2),
             # server.addService(pkg.PaymentService.service, {charge}): grpc-js or the
-            # legacy `grpc` package, the proto often loaded at runtime.
+            # legacy `grpc` package, the proto often loaded at runtime. A proto service
+            # name is PascalCase, so `this.service` names nothing.
             _Rule("provider",
-                  re.compile(r"\.addService\s*\(\s*(?:[\w$]+\.)*?(\w+)\.service\b"),
+                  re.compile(r"\.addService\s*\(\s*(?:[\w$]+\.)*?([A-Z]\w*)\.service\b"),
                   "js:addService({service}.service)", "js_add_service", _ROUTE_REGISTRATION,
                   gate=re.compile(r"""['"](?:@grpc/grpc-js|grpc)['"]""")),
         ),

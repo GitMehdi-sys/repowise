@@ -186,3 +186,14 @@ class TestNodeAddService:
     def test_without_a_grpc_import_add_service_is_not_read(self) -> None:
         # `addService(x.service)` is a grpc-js shape, but nothing else says so.
         assert not _extract(".js", "registry.addService(plugins.Billing.service, opts);\n")
+
+    def test_a_lowercase_receiver_is_not_a_service_name(self) -> None:
+        # `this.service` is a field, not a proto service; the chain's PascalCase
+        # segment is the name even when an earlier segment is called `service`.
+        rows = _extract(
+            ".js",
+            "const grpc = require('@grpc/grpc-js');\n"
+            "s.addService(this.service, impl);\n"
+            "s.addService(pkg.service.Billing.service, impl);\n",
+        )
+        assert [r[0] for r in rows] == ["grpc::Billing/*"]
