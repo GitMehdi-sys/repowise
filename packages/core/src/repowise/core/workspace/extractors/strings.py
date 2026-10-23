@@ -636,10 +636,13 @@ def _js_rebinding_re(name: str) -> re.Pattern[str]:
     """An assignment to *name* or a member of it, or a parameter of that name."""
     n = re.escape(name)
     return re.compile(
-        rf"(?<![\w$.]){n}\s*(?:\.\s*[\w$]+\s*)?[-+*/|&?]?=(?![=>])"  # `x = `, `x.uri = `
+        rf"(?<![\w$.]){n}\s*(?:\.\s*[\w$]+\s*|\[[^\]]*\]\s*)?[-+*/|&?]?=(?![=>])"  # `x =`, `x.uri =`, `x['uri'] =`
         rf"|Object\.assign\s*\(\s*{n}(?![\w$])"
         rf"|function(?![\w$])[^(]*\([^)]*(?<![\w$.]){n}(?![\w$])[^)]*\)"  # `function (err, x)`
         rf"|(?<![\w$.]){n}\s*=>|\([^()]*(?<![\w$.]){n}(?![\w$])[^()]*\)\s*=>"  # `x =>`, `(a, x) =>`
+        # A method shorthand `save(x) {`; a control header (`if (x) {`) is not one.
+        rf"|(?<![\w$.])(?!(?:if|for|while|switch|catch|with)\b)[A-Za-z_$][\w$]*\s*"
+        rf"\([^()]*(?<![\w$.]){n}(?![\w$])[^()]*\)\s*\{{"
     )
 
 

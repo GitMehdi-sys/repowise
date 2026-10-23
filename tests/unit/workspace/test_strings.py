@@ -160,6 +160,8 @@ class TestJsLocalValue:
             "items.forEach(function (err, options) {\n",
             "items.forEach((e, options) => {\n",
             "items.forEach(options => {\n",
+            "options['uri'] = base + '/b';\n",
+            "class S {\n  save(options) {\n",
             "}\nfunction g() {\n",
         ],
     )
@@ -170,3 +172,7 @@ class TestJsLocalValue:
         assert self._at("var url = '/a'\n  + '/b';\nrequest(url);\n", "url") is None
         assert self._at("var url = '/a' +\n  '/b';\nrequest(url);\n", "url") is None
         assert self._at("var url = '/a'\nrequest(url);\n", "url") == "'/a'"
+
+    def test_a_control_header_naming_the_local_does_not_shadow_it(self) -> None:
+        text = "function f() {\n  var options = { uri: '/a' };\n  if (options) {\n    request(options);\n"
+        assert self._at(text) == "{ uri: '/a' }"
