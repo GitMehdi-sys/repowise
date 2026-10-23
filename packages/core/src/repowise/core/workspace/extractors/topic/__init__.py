@@ -12,6 +12,7 @@ from ..dialect import ContractDialect, DialectExtractor
 from .aws import SNS, SQS
 from .bullmq import BULLMQ
 from .dialect import topic_identity
+from .jms import JMS
 from .kafka import KAFKA
 from .laravel import LARAVEL_QUEUES
 from .nats import NATS
@@ -32,6 +33,7 @@ DIALECTS: tuple[ContractDialect, ...] = (
     SNS,
     NESTJS,
     LARAVEL_QUEUES,
+    JMS,
 )
 
 
