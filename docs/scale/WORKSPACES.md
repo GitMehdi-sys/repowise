@@ -142,7 +142,7 @@ Scans source files for HTTP routes, gRPC services, database tables, message topi
 | Python | FastAPI, Flask, Django | requests, httpx (aiohttp through wrappers the index confirms) |
 | PHP | Laravel | Guzzle, Laravel `Http` |
 | Java / Kotlin | Spring, JAX-RS, Micronaut | Feign, `java.net.http`, `RestTemplate`, Ktor (Kotlin) |
-| Go | gin, echo, chi, net/http | net/http |
+| Go | gin, echo, chi, fiber, gorilla/mux, net/http (Go 1.22 method patterns) | net/http |
 | C# | ASP.NET (attribute and minimal API) | HttpClient, UnityWebRequest, Best.HTTP |
 | Ruby | | HTTParty, RestClient, Faraday, Net::HTTP |
 | Rust | Axum, Actix, Rocket | reqwest |

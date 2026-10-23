@@ -72,7 +72,8 @@ CONTRACTS_FILENAME = "contracts.json"
 # service-name map (:mod:`.service_names`), and ``service_links`` holds the
 # service-level edges for calls whose host is known but whose route is not;
 # each repo also counts the files whose network calls produced no contract
-# (see :mod:`.network_probe`).
+# (see :mod:`.network_probe`). Go routes from chi, fiber, gorilla/mux and Go
+# 1.22 method patterns are read.
 CONTRACTS_VERSION = 15
 
 #: ``meta["kind"]`` of a topic contract: the destination a broker call names.
