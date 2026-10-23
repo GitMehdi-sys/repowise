@@ -506,6 +506,17 @@ class TestKafkaByReceiverType:
             ("provider", "topic::invoices"),
         }
 
+    def test_a_qualified_constructor_is_read_only_through_confluent(self, tmp_path: Path) -> None:
+        src = (
+            "import confluent_kafka\n"
+            "p = confluent_kafka.Producer(conf)\n"
+            "p.produce('invoices')\n"
+            "q = other.Producer(conf)\n"
+            "q.produce('nothere')\n"
+        )
+        rows = _extract(tmp_path, "pub.py", src)
+        assert [c.contract_id for c in rows] == ["topic::invoices"]
+
     def test_a_producer_class_without_confluent_is_not_read(self, tmp_path: Path) -> None:
         src = "p = Producer(conf)\np.produce('invoices')\n"
         assert _extract(tmp_path, "pub.py", src) == []
@@ -569,6 +580,7 @@ class TestGoKafka:
         src = (
             'import "github.com/IBM/sarama"\n'
             'const Orders = "orders"\n'
+            "var group sarama.ConsumerGroup\n"
             "msg := &sarama.ProducerMessage{Topic: Orders, Value: sarama.StringEncoder(b)}\n"
             'group.Consume(ctx, []string{"payments"}, h)\n'
         )
@@ -602,6 +614,21 @@ class TestGoKafka:
             ("consumer", "topic::b"),
             ("provider", "topic::c"),
         }
+
+    def test_a_consume_without_a_topic_list_is_not_read(self, tmp_path: Path) -> None:
+        src = (
+            'import "github.com/IBM/sarama"\n'
+            "var g sarama.ConsumerGroup\n"
+            'db.Consume(ctx, "x")\n'
+        )
+        assert _extract(tmp_path, "main.go", src) == []
+
+    def test_a_segmentio_message_is_not_a_publish(self, tmp_path: Path) -> None:
+        src = (
+            'import kafka "github.com/segmentio/kafka-go"\n'
+            'r.CommitMessages(ctx, kafka.Message{Topic: "in", Offset: 4})\n'
+        )
+        assert _extract(tmp_path, "main.go", src) == []
 
     def test_go_shapes_need_their_library(self, tmp_path: Path) -> None:
         src = (

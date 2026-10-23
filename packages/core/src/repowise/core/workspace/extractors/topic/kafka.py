@@ -43,7 +43,7 @@ KAFKA = TopicDialect(
             requires=("KafkaTemplate", "KafkaOperations", "ReactiveKafkaProducerTemplate"),
         ),
         ReceiverCall(
-            types=re.compile(r"\b(?:SerializingProducer|Producer)\b"),
+            types=re.compile(r"\b(?:confluent_kafka\.)?(?:SerializingProducer|Producer)\b"),
             verbs="produce",
             role="provider",
             label="Producer.produce",
@@ -52,7 +52,7 @@ KAFKA = TopicDialect(
             requires=_CONFLUENT_PY,
         ),
         ReceiverCall(
-            types=re.compile(r"\b(?:DeserializingConsumer|Consumer)\b"),
+            types=re.compile(r"\b(?:confluent_kafka\.)?(?:DeserializingConsumer|Consumer)\b"),
             verbs="subscribe",
             role="consumer",
             label="Consumer.subscribe",
@@ -182,16 +182,18 @@ KAFKA = TopicDialect(
             requires=_SARAMA,
         ),
         TopicCall(
-            # ConsumerGroup.Consume(ctx, []string{"orders"}, handler)
-            head=re.compile(r"\.Consume\s*\("),
+            # ConsumerGroup.Consume(ctx, []string{"orders"}, handler): the topic
+            # list literal is required, as `Consume` alone is any receiver's.
+            head=re.compile(r"\.Consume\s*\((?=[^,]*,\s*\[\]string\s*\{)"),
             role="consumer",
             label="ConsumerGroup.Consume",
             extensions=GO,
             name=Arg(pos=1),
-            requires=_SARAMA,
+            requires=("ConsumerGroup",),
         ),
         TopicCall(
-            head=re.compile(r"kafka\.(?:Writer|WriterConfig|Message)\s*\{"),
+            # Not `kafka.Message{Topic: t}`: a consumer builds one to commit an offset.
+            head=re.compile(r"kafka\.(?:Writer|WriterConfig)\s*\{"),
             role="provider",
             label="kafka.Writer",
             extensions=GO,
