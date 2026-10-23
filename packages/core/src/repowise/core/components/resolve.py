@@ -7,6 +7,11 @@ knows, first source that yields any:
 2. module pages of the structural wiki (``module``),
 3. top-level directories, the module-health bucket (``directory``).
 
+A repo those sources cannot divide gets one component named after the repo
+(``repo``): no derived component that names a place claims a file (a flat
+repo, or only layout and test directories such as ``src`` and ``test``), or
+most files sit at the repo root.
+
 Declared components merge over derived ones:
 
 * A declared component claims every file its ``repowise.dev/paths`` globs
@@ -77,6 +82,35 @@ def derive_from_directories(file_paths: Iterable[str]) -> list[Component]:
     return _derived(((d, None) for d in sorted(dirs)), "directory")
 
 
+def repo_wide_when_flat(
+    derived: list[Component], file_paths: Iterable[str], repo_name: str
+) -> list[Component]:
+    """*derived*, or one component for the whole repo when *derived* does not
+    divide it (see the module docstring). Dot-directories and root dot-files
+    stay unassigned, as they do under directory derivation."""
+    files = [p for p in file_paths if not p.startswith(".")]
+    if not files:
+        return derived
+    at_root = sum(1 for p in files if "/" not in p)
+    places = [c for c in derived if _names_place(c.root)]
+    if at_root * 2 <= len(files) and any(_under(p, c.root) for c in places for p in files):
+        return derived
+    return [
+        Component(
+            name=_slug(repo_name) or "repo",
+            paths=("**", "!/.*"),
+            source="repo",
+            root=REPO_ROOT,
+        )
+    ]
+
+
+def _names_place(root: str | None) -> bool:
+    """Whether *root*'s last place segment says more than layout or tests."""
+    parts = [p for p in (root or "").split("/") if p and not _ROUTE_SEGMENT.match(p)]
+    return bool(parts) and parts[-1].lower() not in _CODEBASE_SEGMENTS | _TEST_SEGMENTS
+
+
 def _derived(roots: Iterable[tuple[str, str | None]], source: str) -> list[Component]:
     cleaned: dict[str, str | None] = {}
     for root, title in roots:
@@ -141,6 +175,12 @@ def _assign_names(roots: list[str]) -> dict[str, str]:
 _ROUTE_SEGMENT = re.compile(r"^(\[.*\]|\(.*\)|\{[\w.-]+\}|[:$][\w-]+)$")
 #: Layout directories too generic to tell two same-named components apart.
 _LAYOUT_SEGMENTS = frozenset({"src", "lib", "app", "apps", "packages", "pkg", "internal", "source"})
+#: Layout directories that hold one codebase (``packages`` or ``apps`` hold several).
+_CODEBASE_SEGMENTS = frozenset({"src", "source", "lib", "app"})
+#: Directories that hold a repo's tests rather than a part of it.
+_TEST_SEGMENTS = frozenset({"test", "tests", "spec", "specs", "__tests__", "e2e"})
+#: The ``root`` of a repo-wide component: every path outside a dot-directory.
+REPO_ROOT = "."
 
 
 def _names(root: str) -> list[str]:
@@ -210,6 +250,8 @@ def resolve_components(
 
 
 def _under(path: str, root: str | None) -> bool:
+    if root == REPO_ROOT:
+        return not path.startswith(".")
     return bool(root) and path.startswith(f"{root}/")
 
 
