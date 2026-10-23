@@ -187,11 +187,8 @@ def annotate_consumer_targets(
         for key in _TARGET_KEYS:
             c.meta.pop(key, None)
         target, external, via = _resolve_consumer_target(c, repo_aliases, sb, names)
-        routed = None if external or not names.routes else _through_gateway(c, target, names)
-        if routed is not None:
-            route, c.meta["route_path"] = routed
-            target = route.repo
-            via = ServiceName(route.name, HOST, route.repo, route.source, route.file)
+        if not external and names.routes:
+            target, via = _apply_gateway_route(c, target, via, names)
         if external:
             c.meta["external"] = True
         elif target:
@@ -225,6 +222,18 @@ def _through_gateway(
         return None
     split = _split_http_id(normalize_contract_id(consumer.contract_id))
     return names.route_for(gateway, split[1]) if split is not None else None
+
+
+def _apply_gateway_route(
+    consumer: Contract, target: str | None, via: ServiceName | None, names: ServiceNameMap
+) -> tuple[str | None, ServiceName | None]:
+    """Retarget *consumer* to the service its gateway route forwards to, stamping the
+    forwarded path; unchanged when no route applies."""
+    routed = _through_gateway(consumer, target, names)
+    if routed is None:
+        return target, via
+    route, consumer.meta["route_path"] = routed
+    return route.repo, ServiceName(route.name, HOST, route.repo, route.source, route.file)
 
 
 # ---------------------------------------------------------------------------
@@ -289,10 +298,11 @@ def gateway_pass(state: MatchState) -> None:
         if upstream is None or split is None:
             continue
         target = consumer.meta.get("target_repo")
-        for key in find_matching_keys(f"http::{split[0]}::{upstream}", state.provider_index):
-            for provider in state.provider_index[key]:
-                if provider.repo == target and not internal(provider, consumer):
-                    state.add(consumer, provider, LinkStrategy.GATEWAY_ROUTE)
+        keys = find_matching_keys(f"http::{split[0]}::{upstream}", state.provider_index)
+        providers = [p for k in keys for p in state.provider_index[k] if p.repo == target]
+        for provider in providers:
+            if not internal(provider, consumer):
+                state.add(consumer, provider, LinkStrategy.GATEWAY_ROUTE)
 
 
 def gateway_route_links(routes: Iterable[GatewayRoute]) -> list[ContractLink]:

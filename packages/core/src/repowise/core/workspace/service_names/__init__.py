@@ -261,6 +261,22 @@ def _settle(
             out.ambiguous[key] = tuple(sorted(by_repo))
 
 
+def _route_row(f: _Found, named: Callable[[str], str | None]) -> GatewayRoute | None:
+    """One route claim placed: its gateway repo and target repo (``""`` when unknown or itself)."""
+    route: Route = f.claim.route  # type: ignore[assignment]
+    if route.gateway:
+        gateway = next((r for r in map(named, route.gateway) if r is not None), None)
+    else:
+        gateway = f.file_repo
+    if gateway is None or not route.prefix:
+        return None
+    target = named(f.claim.name)
+    target = "" if target is None or target == gateway else target
+    return GatewayRoute(
+        gateway, route.prefix, route.upstream, target, f.claim.name, f.source.name, f.evidence
+    )
+
+
 def _settle_routes(
     found: list[_Found], named: Callable[[str], str | None]
 ) -> tuple[GatewayRoute, ...]:
@@ -272,22 +288,9 @@ def _settle_routes(
     """
     by_key: dict[tuple[str, str], dict[tuple[str, str | None], GatewayRoute]] = defaultdict(dict)
     for f in found:
-        route: Route = f.claim.route  # type: ignore[assignment]
-        if route.gateway:
-            gateway = next((r for r in map(named, route.gateway) if r is not None), None)
-        else:
-            gateway = f.file_repo
-        if gateway is None or not route.prefix:
-            continue
-        target = named(f.claim.name)
-        if target is None or target == gateway:
-            target = ""
-        by_key[(gateway, route.prefix)].setdefault(
-            (target, route.upstream),
-            GatewayRoute(
-                gateway, route.prefix, route.upstream, target, f.claim.name, f.source.name, f.evidence
-            ),
-        )
+        row = _route_row(f, named)
+        if row is not None:
+            by_key[(row.gateway, row.prefix)].setdefault((row.repo, row.upstream), row)
     settled: list[GatewayRoute] = []
     for (gateway, prefix), ways in sorted(by_key.items()):
         first = next(iter(ways.values()))
