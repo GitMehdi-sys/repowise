@@ -22,6 +22,7 @@ from ..langs import PYTHON
 from .apex_callouts import ApexCalloutsDialect
 from .apex_rest import ApexRestDialect
 from .aspnet import AspNetDialect
+from .azure_functions import AzureFunctionsDialect
 from .csharp_http import CSharpHttpDialect
 from .django import DjangoDialect
 from .express import ExpressDialect
@@ -73,6 +74,7 @@ PROVIDER_DIALECTS: tuple[ContractDialect, ...] = (
     NextAppDialect(),
     RemixDialect(),
     ApexRestDialect(),
+    AzureFunctionsDialect(),
 )
 
 # HTTP-client call recognisers (one client/language each).

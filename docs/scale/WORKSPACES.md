@@ -147,6 +147,7 @@ Scans source files for HTTP routes, gRPC services, database tables, message topi
 | Ruby | | HTTParty, RestClient, Faraday, Net::HTTP |
 | Rust | Axum, Actix, Rocket | reqwest |
 | Apex | `@RestResource` classes (`/services/apexrest` + `urlMapping`) | `HttpRequest` callouts (literal endpoint and verb) |
+| C# (Azure Functions) | `[HttpTrigger]` routes under the default `/api` prefix; the function name when no `Route` is set | |
 | Any | OpenAPI 3.x documents | |
 
 **Database tables:**
