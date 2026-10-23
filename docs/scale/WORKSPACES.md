@@ -138,7 +138,7 @@ Scans source files for HTTP routes, gRPC services, database tables, message topi
 
 | Language | Providers (routes served) | Consumers (calls made) |
 |----------|---------------------------|------------------------|
-| JS / TS | Express, Hono, Fastify, Koa, Elysia; NestJS controllers; Next.js App Router; Remix | `fetch`; axios, ky, got, ofetch and their instances; Angular `HttpClient`; HTTP-named wrappers |
+| JS / TS | Express, Hono, Fastify, Koa, hapi, Elysia; NestJS controllers; Next.js App Router and `pages/api`; Remix | `fetch`; axios, ky, got, ofetch and their instances; Angular `HttpClient`; HTTP-named wrappers |
 | Python | FastAPI, Flask, Django | requests, httpx (aiohttp through wrappers the index confirms) |
 | PHP | Laravel | Guzzle, Laravel `Http` |
 | Java / Kotlin | Spring, JAX-RS, Micronaut | Feign, `java.net.http`, `RestTemplate`, Ktor (Kotlin) |

@@ -127,16 +127,20 @@ def aspnet_groups(content: str) -> Iterator[GroupMatch]:
 # ---------------------------------------------------------------------------
 
 # `use` and `all` are here because the graph consumer scans them for handler
-# functions; the contract consumer drops them via HTTP_METHODS.
-_EXPRESS_VERBS = "get|post|put|delete|patch|options|head|all|use"
+# functions; the contract consumer drops them via HTTP_METHODS. `del` is
+# koa-router's (and Express 3's) DELETE.
+_EXPRESS_VERBS = "get|post|put|delete|del|patch|options|head|all|use"
 
 # router.get('/path', handler). The path literal is optional — `app.use(router)`
 # carries none. The lookbehind excludes a word character as well as `@`, which
 # neither copy did: `\b` alone admits `@app.get` (a FastAPI/NestJS decorator, not
 # an Express route), and `(?<!@)` alone lets the engine restart inside the name
 # and match `pp.get` there instead.
+# A TypeScript type argument may sit between the verb and its call
+# (Fastify's `app.get<{Params: P}>('/x', h)`); it holds no parenthesis.
 _EXPRESS_ROUTE_RE = re.compile(
-    rf"(?<![\w@])(?P<receiver>\w+)\s*\.\s*(?P<verb>{_EXPRESS_VERBS})\s*(?P<paren>\()"
+    rf"(?<![\w@])(?P<receiver>\w+)\s*\.\s*(?P<verb>{_EXPRESS_VERBS})\s*"
+    r"(?:<[^()<>]*(?:<[^()<>]*>[^()<>]*)*>\s*)?(?P<paren>\()"
     r"""\s*(?:(?P<q>['"])(?P<path>[^'"]*)(?P=q))?""",
     re.IGNORECASE,
 )
@@ -155,7 +159,7 @@ _JS_ROUTER_CTORS: tuple[tuple[str, str], ...] = (
     # (`services.http.Router()`) still binds, as it did before this table.
     ("express", r"(?:[\w$.]*\s*\.\s*)?Router\s*\(|express\s*\("),
     ("hono", r"new\s+Hono\s*[(<]"),
-    ("fastify", r"[Ff]astify\s*\("),
+    ("fastify", r"[Ff]astify\s*\(|require\s*\(\s*['\"]fastify['\"]\s*\)\s*\("),
     ("koa", r"new\s+[Kk]oa\s*\("),
     ("elysia", r"new\s+Elysia\s*[(<]"),
 )

@@ -94,8 +94,11 @@ Data/DB contracts use the id scheme `data::<table>` and render as a `db` edge in
 
 HTTP routes are matched on their **full** path: a router mount prefix
 (`APIRouter(prefix=...)`, `include_router(prefix=...)`, Express `app.use('/x', router)`,
-Go route groups, Laravel `Route::prefix(...)->group(...)` and `Route::group(['prefix' => ...])`)
-is stitched onto each handler path before matching. Laravel's `routes/api.php` is
+Go route groups, Laravel `Route::prefix(...)->group(...)` and `Route::group(['prefix' => ...])`,
+Fastify `register(plugin, {prefix})`, Koa `new Router({prefix})` and nested `router.use()`,
+hapi `register({plugin, routes: {prefix}})`) is stitched onto each handler path before matching.
+A Fastify, Koa or hapi prefix that does not resolve to a string, or a plugin mounted at two
+different prefixes, leaves those routes out rather than at a guessed path. Laravel's `routes/api.php` is
 served under `/api` unless `bootstrap/app.php` (`apiPrefix`) or a route provider says
 otherwise, and `Route::resource` / `apiResource` expand into the routes they register. A NestJS
 route is served at the app's `setGlobalPrefix` (unless its `exclude` list names the route), then
