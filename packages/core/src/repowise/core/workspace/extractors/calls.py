@@ -282,7 +282,7 @@ def declared_receivers(content: str, type_re: re.Pattern[str]) -> list[str]:
     client's import) and its verbs keep that rare; scoping names to the
     declaring method is the upgrade path.
     """
-    names: list[str] = []
+    names: dict[str, None] = {}
     for m in type_re.finditer(content):
         start, end = m.start(), m.end()
         before = content[max(0, start - _DECLARATION_WINDOW) : start]
@@ -296,9 +296,9 @@ def declared_receivers(content: str, type_re: re.Pattern[str]) -> list[str]:
             found = _ASSIGNED_RE.search(before)
         else:
             found = _TYPED_RE.search(before)
-        if found is not None and found.group("name") not in names:
-            names.append(found.group("name"))
-    return names
+        if found is not None:
+            names[found.group("name")] = None
+    return list(names)
 
 
 # Whitespace and comments between decorators and the member they decorate.

@@ -686,19 +686,20 @@ def _elements(value: str) -> list[str]:
     return [value]
 
 
+def _keyword_value(args: list[str], keys: tuple[str, ...]) -> str | None:
+    """The value of the first keyword argument or map entry named one of *keys*."""
+    pattern = _keyword_re(keys)
+    for a in args:
+        for entry in _map_entries(a) or [a]:
+            m = pattern.match(entry)
+            if m is not None:
+                return m.group("value").strip()
+    return None
+
+
 def select_argument(args: list[str], arg: Arg) -> list[str]:
     """The source text of the value(s) *arg* selects from *args*, arrays expanded."""
-    value: str | None = None
-    if arg.keys:
-        pattern = _keyword_re(arg.keys)
-        for a in args:
-            for entry in _map_entries(a) or [a]:
-                m = pattern.match(entry)
-                if m is not None:
-                    value = m.group("value").strip()
-                    break
-            if value is not None:
-                break
+    value = _keyword_value(args, arg.keys) if arg.keys else None
     if value is None and arg.variadic and arg.pos is not None:
         rest = [a for a in args[arg.pos :] if not _KEYWORD_ARG_RE.match(a)]
         return [e for a in rest for e in _elements(a)]
