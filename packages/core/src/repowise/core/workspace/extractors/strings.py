@@ -586,6 +586,55 @@ _MULTI_ASSIGN_RE = re.compile(
 )
 
 
+# A typed local declaration (`var uri = `, `string url = `, `Uri? u = `). The
+# word before the name is its type, unless it is a keyword (`else uri = x`).
+_LOCAL_DECL = r"\b(?P<type>\w+)[>\[\]?]*[ \t]+{name}[ \t]*=(?![=>])"
+_NOT_A_TYPE = frozenset({"else", "return", "await", "yield", "throw", "case", "do"})
+# A modifier marks a field, whose other assignments may sit in any method.
+_MEMBER_MODIFIER_RE = re.compile(r"\b(?:private|public|protected|internal|static|readonly|const)\b")
+_BRACE_RE = re.compile(r"[{}]")
+# How far above a use :func:`enclosing_local` looks for the declaration.
+LOCAL_WINDOW = 8_000
+
+
+def enclosing_local(content: str, code: str, name: str, offset: int) -> str | None:
+    """The right-hand side of the local *name* a use at *offset* reads, else ``None``.
+
+    For a brace language whose locals are block scoped (C#): the nearest
+    declaration of *name* above *offset* counts only when its block still
+    encloses the use and nothing reassigns *name* in between, so the same
+    ``var uri`` in each of a file's methods reads as each method's own. A
+    declaration with a modifier is a field and is not read here.
+    *code* is *content* with comments and string bodies blanked at the same
+    offsets. Only the :data:`LOCAL_WINDOW` characters above the use are read,
+    so a file of many calls stays linear; a declaration further up is refused.
+    """
+    n = re.escape(name)
+    decls = list(re.compile(_LOCAL_DECL.format(name=n)).finditer(code, max(0, offset - LOCAL_WINDOW), offset))
+    if not decls or decls[-1].group("type") in _NOT_A_TYPE:
+        return None
+    decl = decls[-1]
+    if _MEMBER_MODIFIER_RE.search(code, code.rfind("\n", 0, decl.start()) + 1, decl.start()):
+        return None
+    rhs = decl.end()
+    semi = code.find(";", rhs, offset)
+    if semi < 0:
+        return None
+    depth = 0
+    for brace in _BRACE_RE.finditer(code, semi, offset):
+        depth += 1 if brace.group() == "{" else -1
+        if depth < 0:
+            return None  # the declaring block closed before the use
+    # Reassigned (`x = `, `x += `, `out x`, `ref x`, `(x, y) = `) or shadowed
+    # by a lambda parameter (`x => `) between the declaration and the use.
+    rebound = re.compile(
+        rf"(?<![\w.]){n}\s*(?:[-+?]*=(?!=)|,[^;=]*\)\s*=(?![=>]))|\b(?:out|ref)\s+(?:var\s+)?{n}\b"
+    )
+    if rebound.search(code, semi, offset):
+        return None
+    return content[rhs:semi].strip()
+
+
 def on_comment_line(content: str, offset: int) -> bool:
     """True when the line holding *offset* starts as a line or block comment."""
     start = max(content.rfind("\n", 0, offset) + 1, offset - 200)
@@ -763,12 +812,16 @@ RUST_SYNTAX = StringSyntax(
     placeholder=_BRACE_PLACEHOLDER_RE,
 )
 
+# No `assignment`: a C# name is folded only where a dialect checks it is a
+# field (see `http/csharp_http.py`), never by file-wide single assignment.
 CSHARP_SYNTAX = StringSyntax(
     quotes='"',
     prefixes="$@",
     template_prefixes="$",
     interpolation=_BRACE_INTERP_RE,
     refuse=_ESCAPED_BRACE_RE,
+    unwrap_heads=("new Uri",),
+    concat="+",
 )
 
 GO_SYNTAX = StringSyntax(
@@ -871,6 +924,7 @@ __all__ = [
     "ClassFields",
     "StringSyntax",
     "call_arguments",
+    "enclosing_local",
     "inline_names",
     "js_class_fields",
     "literal_span",
