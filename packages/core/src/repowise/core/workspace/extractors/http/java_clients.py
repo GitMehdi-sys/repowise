@@ -203,10 +203,36 @@ _ANNOTATION_STRING_RE = re.compile(
 )
 
 # A controller in the same file: `@HttpExchange` there declares a route served.
+# The guard is per file; a shared interface a controller elsewhere implements
+# still reads as a client.
 _CONTROLLER_RE = re.compile(r"@(?:Rest)?Controller\b")
 
 # A host the service-name map can look up: a bare service id, no placeholder.
 _SERVICE_ID_RE = re.compile(r"[\w.-]+")
+
+
+def _top_level(args: str) -> str:
+    """*args* with every nested ``(...)``, ``{...}`` and ``[...]`` blanked, offsets kept.
+
+    A nested annotation's ``path`` or ``url`` (``configuration = @Cfg(path = ...)``)
+    is not the client's.
+    """
+    out = list(args)
+    depth = 0
+    quoted = False
+    for i, ch in enumerate(args):
+        if ch == '"' and (i == 0 or args[i - 1] != "\\"):
+            quoted = not quoted
+        elif not quoted and ch in "([{":
+            depth += 1
+        elif not quoted and ch in ")]}":
+            depth -= 1
+            if depth >= 1:
+                out[i] = " "
+            continue
+        if depth > 1:
+            out[i] = " "
+    return "".join(out)
 
 
 def _annotation_strings(args: str) -> dict[str, str]:
@@ -232,6 +258,7 @@ def _feign_base(args: str) -> tuple[str, str] | None:
     held in a constant, leaves the call a bare path. A ``path`` this cannot
     read leaves every route under the client unknown.
     """
+    args = _top_level(args)
     strings = _annotation_strings(args)
     prefix = strings.get("path", "")
     if "${" in prefix or ("path" not in strings and _names_key(args, "path")):

@@ -216,3 +216,39 @@ public class UserController {
         assert [(k.consumer_repo, k.provider_repo) for k in links] == [
             ("account-service", "auth-service")
         ]
+
+
+NESTED_ANNOTATION_CLIENT = """@FeignClient(name = "a", configuration = @Cfg(path = "/z", url = "http://x"))
+interface C {
+    @GetMapping("/items")
+    String f();
+}
+"""
+
+CONSTANT_NAME_CLIENT = """@FeignClient(name = Services.ORDERS)
+interface OrdersClient {
+    @GetMapping("/orders/{id}")
+    Order get(@PathVariable String id);
+}
+"""
+
+KOTLIN_ARRAY_CLIENT = """@FeignClient(name = "catalog")
+interface CatalogClient {
+    @GetMapping(path = ["/items", "/products"])
+    fun list(): List<Item>
+}
+"""
+
+
+class TestFeignArguments:
+    def test_a_nested_annotation_s_arguments_are_not_the_client_s(self) -> None:
+        assert rows(NESTED_ANNOTATION_CLIENT) == [("http::GET::/items", "a")]
+
+    def test_a_name_held_in_a_constant_is_no_host(self) -> None:
+        assert rows(CONSTANT_NAME_CLIENT) == [("http::GET::/orders/{param}", None)]
+
+    def test_a_kotlin_path_array_fans_out(self) -> None:
+        assert rows(KOTLIN_ARRAY_CLIENT, "CatalogClient.kt") == [
+            ("http::GET::/items", "catalog"),
+            ("http::GET::/products", "catalog"),
+        ]
