@@ -297,6 +297,8 @@ def _literal_text(
 
 def _format_template(text: str, syntax: StringSyntax, constants: dict[str, str]) -> str | None:
     """A ``format!("...")``-style call as template text, or ``None``."""
+    if not syntax.format_heads:
+        return None
     m = _head_re(syntax.format_heads).match(text)
     if m is None or syntax.placeholder is None:
         return None
@@ -318,8 +320,10 @@ def _template_holes(body: str, syntax: StringSyntax) -> str:
 
 def _format_method(text: str, syntax: StringSyntax, constants: dict[str, str]) -> str | None:
     """A ``"/x/{}".format(id)``-style call as template text, or ``None``."""
+    if not syntax.format_method or not text.endswith(")"):
+        return None
     dot = text.rfind(syntax.format_method + "(")
-    if dot <= 0 or syntax.placeholder is None or not text.endswith(")"):
+    if dot <= 0 or syntax.placeholder is None:
         return None
     if match_paren(text, dot + len(syntax.format_method)) != len(text) - 1:
         return None  # the call does not run to the end of the expression
@@ -353,7 +357,7 @@ def _unwrap(text: str, syntax: StringSyntax) -> str | None:
 
 def _concat(text: str, syntax: StringSyntax, constants: dict[str, str]) -> str | None:
     """``a + "/x"`` as template text, or ``None`` when a piece is not readable."""
-    if syntax.concat not in text:
+    if not syntax.concat or syntax.concat not in text:
         return None
     pieces = split_top_level(text, syntax.concat)
     if len(pieces) < 2:
@@ -389,22 +393,14 @@ def resolve_string(
     parsed = _parse_literal(text, syntax)
     if parsed is not None:
         return _literal_text(parsed, syntax, constants)
-    if syntax.format_heads:
-        folded = _format_template(text, syntax, constants)
-        if folded is not None:
-            return folded
-    if syntax.format_method:
-        folded = _format_method(text, syntax, constants)
+    for fold in (_format_template, _format_method, _concat):
+        folded = fold(text, syntax, constants)
         if folded is not None:
             return folded
     if syntax.unwrap_heads:
         inner = _unwrap(text, syntax)
         if inner is not None:
             return resolve_string(inner, syntax, constants)
-    if syntax.concat:
-        folded = _concat(text, syntax, constants)
-        if folded is not None:
-            return folded
     if NAME_RE.fullmatch(text):
         # A bare name. Its value resolved without constants when it was
         # recorded, so this step cannot reach another bare name.
