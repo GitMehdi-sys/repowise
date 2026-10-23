@@ -89,6 +89,7 @@ async def update_workspace(
     commit_depth: int = _DEFAULT_COMMIT_LIMIT,
     exclude_patterns: list[str] | None = None,
     include_working_tree: bool = False,
+    restamp_up_to_date: bool = True,
     on_repo_start: Callable[[str], None] | None = None,
     on_repo_done: Callable[[RepoUpdateResult], None] | None = None,
 ) -> list[RepoUpdateResult]:
@@ -113,6 +114,10 @@ async def update_workspace(
             it. Off for every commit-anchored caller (hooks, webhooks, a
             manual sync); ``repowise watch --workspace`` sets it, because a
             repo it is watching normally has no new commits at all.
+        restamp_up_to_date: Advance each up-to-date member's DB freshness
+            stamp. The CLI turns it off: it has already restamped the members
+            whose fingerprint moved, and a restamp here would rewrite every
+            member's DB, and so its editor files, on every change.
         on_repo_start: Called with alias when a repo update begins.
         on_repo_done: Called with result when a repo update finishes.
 
@@ -125,7 +130,9 @@ async def update_workspace(
     # A child repo may have been updated on its own; read its state.json first.
     sync_workspace_state_from_disk(workspace_root, ws_config)
 
-    stale_repos = await _select_stale_repos(workspace_root, entries, include_working_tree, results)
+    stale_repos = await _select_stale_repos(
+        workspace_root, entries, include_working_tree, results, restamp_up_to_date
+    )
     # An edited contracts: or conformance: block is work too, with no repo stale.
     if dry_run or not (
         stale_repos or (run_hooks and analysis_config_changed(ws_config, workspace_root))
@@ -187,6 +194,7 @@ async def _select_stale_repos(
     entries: list[RepoEntry],
     include_working_tree: bool,
     results: list[RepoUpdateResult],
+    restamp_up_to_date: bool = True,
 ) -> list[_StaleRepo]:
     """Return the stale entries; append a skipped result for every other one."""
     stale_repos: list[_StaleRepo] = []
@@ -206,7 +214,8 @@ async def _select_stale_repos(
         if not is_stale:
             # Nothing to regenerate, but the DB freshness stamp can still be
             # behind; reconcile it so the server stops reporting "index behind checkout".
-            await reconcile_repo_head_commit(abs_path, current_head)
+            if restamp_up_to_date:
+                await reconcile_repo_head_commit(abs_path, current_head)
             results.append(
                 RepoUpdateResult(
                     alias=entry.alias,
