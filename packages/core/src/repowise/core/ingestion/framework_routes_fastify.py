@@ -120,9 +120,9 @@ def _named(content: str, head: int, own: str) -> tuple[list[str], bool]:
     return names, fp
 
 
-def fastify_plugins(content: str, params: set[str]) -> list[Plugin]:
-    """The functions of *content* whose instance parameter is in *params*."""
-    heads: list[tuple[int, str, str, int]] = []  # (head, param, own name, body brace)
+def _function_heads(content: str, params: set[str]) -> list[tuple[int, str, str, int]]:
+    """``(head, param, own name, body brace)`` per function taking a param in *params*."""
+    heads: list[tuple[int, str, str, int]] = []
     for m in _FUNCTION_RE.finditer(content):
         if m.group("param") not in params:
             continue
@@ -135,15 +135,19 @@ def fastify_plugins(content: str, params: set[str]) -> list[Plugin]:
         window_start = max(0, m.start() - _ARROW_WINDOW)
         p = _ARROW_PARAMS_RE.search(content[window_start : m.start()])
         param = (p.group("p1") or p.group("p2")) if p else None
-        if param in params:
+        if p is not None and param in params:
             heads.append((window_start + p.start(), param, "", m.end() - 1))
+    return heads
 
+
+def fastify_plugins(content: str, params: set[str]) -> list[Plugin]:
+    """The functions of *content* whose instance parameter is in *params*."""
     aliases: dict[str, bool] = {}  # name -> wrapped in fp, for `export default name`
     for m in _ALIAS_RE.finditer(content):
         aliases[m.group("name")] = bool(m.group("fp")) and m.group("fp") in _FP_WRAPPERS
 
     out: list[Plugin] = []
-    for head, param, own, brace in heads:
+    for head, param, own, brace in _function_heads(content, params):
         end = match_paren(content, brace)
         if end < 0:
             continue

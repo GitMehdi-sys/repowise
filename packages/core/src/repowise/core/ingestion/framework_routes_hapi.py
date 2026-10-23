@@ -102,6 +102,20 @@ def _lead(content: str, span: tuple[int, int]) -> int:
     return len(text) - len(text.lstrip())
 
 
+def _plugin_objects(
+    content: str, span: tuple[int, int], imports: dict[str, tuple[str, str]], call_prefix: str
+) -> Iterator[HapiMount]:
+    """``{plugin, routes: {prefix}}`` objects in *span*, alone or in a list."""
+    for obj in js_objects(content, span[0], span[1]):
+        target = plugin_ref(content, obj.keys["plugin"][0], imports) if "plugin" in obj.keys else None
+        if target is None:
+            continue
+        own = _routes_prefix(content, obj)
+        # A prefix on the plugin object and another on the call: unreadable.
+        prefix = None if own and call_prefix else own or call_prefix
+        yield HapiMount(obj.open, target, prefix)
+
+
 def hapi_mounts(content: str) -> Iterator[HapiMount]:
     """``register`` plugins and ``route`` modules named in *content*."""
     imports = js_imports(content)
@@ -121,17 +135,8 @@ def hapi_mounts(content: str) -> Iterator[HapiMount]:
             if target is not None:
                 yield HapiMount(m.start(), target, "")
             continue
-        head = content[first:first_end].lstrip()
-        if head[:1] in "{[":
-            # `{plugin, routes: {prefix}}` objects, alone or in a list.
-            for obj in js_objects(content, first, first_end):
-                if "plugin" not in obj.keys:
-                    continue
-                target = plugin_ref(content, obj.keys["plugin"][0], imports)
-                if target is not None:
-                    own = _routes_prefix(content, obj)
-                    prefix = None if own and call_prefix else own or call_prefix
-                    yield HapiMount(obj.open, target, prefix)
+        if content[first:first_end].lstrip()[:1] in "{[":
+            yield from _plugin_objects(content, (first, first_end), imports, call_prefix)
             continue
         target = plugin_ref(content, first, imports)
         if target is not None:

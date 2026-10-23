@@ -164,34 +164,40 @@ def chain_receiver(content: str, dot: int) -> str | None:
     Parentheses are matched backwards without reading strings, which is enough
     for the argument lists of a registration chain.
     """
-    i = dot - 1
+    i = _back_over_space(content, dot - 1)
     for _ in range(64):
-        while i >= 0 and content[i].isspace():
-            i -= 1
         if i < 0:
             return None
         if content[i] == ")":
-            depth = 0
-            while i >= 0:
-                depth += {")": 1, "(": -1}.get(content[i], 0)
-                if depth == 0:
-                    break
-                i -= 1
-            i -= 1
+            i = _back_over_space(content, _open_paren_before(content, i) - 1)
             continue
-        j = i
-        while j >= 0 and (content[j].isalnum() or content[j] in "_$"):
-            j -= 1
-        if j == i:
+        m = _NAME_AT_END_RE.search(content, max(0, i - 128), i + 1)
+        if m is None:
             return None
-        k = j
-        while k >= 0 and content[k].isspace():
-            k -= 1
-        if k >= 0 and content[k] == ".":
-            i = k - 1
-            continue
-        return content[j + 1 : i + 1]
+        before = _back_over_space(content, m.start() - 1)
+        if before < 0 or content[before] != ".":
+            return m.group()
+        i = _back_over_space(content, before - 1)
     return None
+
+
+_NAME_AT_END_RE = re.compile(r"[\w$]+$")
+
+
+def _back_over_space(content: str, i: int) -> int:
+    while i >= 0 and content[i].isspace():
+        i -= 1
+    return i
+
+
+def _open_paren_before(content: str, close: int) -> int:
+    """Index of the ``(`` the ``)`` at *close* closes, or -1."""
+    depth = 0
+    for i in range(close, -1, -1):
+        depth += {")": 1, "(": -1}.get(content[i], 0)
+        if depth == 0:
+            return i
+    return -1
 
 
 def module_key(rel_path: str) -> str:
