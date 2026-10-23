@@ -177,6 +177,11 @@ class TestGorilla:
         src = 'import "github.com/gorilla/mux"\nr.Path("/x").Methods(verbs...).HandlerFunc(h)\n'
         assert _provided(src) == [("http::*::/x", 2, "h")]
 
+    def test_matchers_after_the_handler_are_read(self) -> None:
+        # Handler returns the *Route, so gorilla accepts matchers after it.
+        src = 'import "github.com/gorilla/mux"\nr.Path("/x").Handler(h).Methods("GET")\n'
+        assert _provided(src) == [("http::GET::/x", 2, "h")]
+
     def test_chains_are_read_only_in_a_gorilla_file(self) -> None:
         src = 'r.Methods("GET").Path("/x").Handler(h)\n'
         assert list(gorilla_routes(src)) == []

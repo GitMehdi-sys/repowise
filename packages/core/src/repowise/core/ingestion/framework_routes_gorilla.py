@@ -79,8 +79,8 @@ class _Chain:
                 m = _HANDLER_RE.match(content, at + 1)
                 self.handler = m.group("handler") if m else None
                 self.handler_call = bool(m) and m.group("after") == "("
+                # Handler returns the *Route, so matchers may follow it.
                 self.handled = True
-                return
             elif link == "Subrouter":
                 self.subrouter = True
                 return
