@@ -57,3 +57,18 @@ def test_a_dunder_probe_does_not_load_the_analysis_crud() -> None:
         "import repowise.core.persistence.crud as c; hasattr(c, '__wrapped__')",
         "repowise.core.persistence.crud.analysis",
     )
+
+
+def test_submodules_stay_reachable_as_package_attributes() -> None:
+    probe = (
+        "import repowise.core.persistence as p, repowise.core.persistence.crud as c; "
+        "print(p.crud.__name__, p.database.__name__, c.analysis.__name__)"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, check=True
+    ).stdout.split()
+    assert out == [
+        "repowise.core.persistence.crud",
+        "repowise.core.persistence.database",
+        "repowise.core.persistence.crud.analysis",
+    ]

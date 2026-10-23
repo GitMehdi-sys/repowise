@@ -43,6 +43,8 @@ def __getattr__(name: str) -> Any:
     if name.startswith("_"):
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     analysis = importlib.import_module(".analysis", __name__)
+    if name == "analysis":
+        return analysis
     if name not in analysis.__all__:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     value = getattr(analysis, name)

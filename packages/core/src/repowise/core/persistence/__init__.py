@@ -178,6 +178,9 @@ _LAZY = {name: module for module, names in _LAZY_BY_MODULE.items() for name in n
 
 
 def __getattr__(name: str) -> Any:
+    if name in _LAZY_BY_MODULE:
+        # The eager imports bound these submodules as attributes.
+        return importlib.import_module(f".{name}", __name__)
     module = _LAZY.get(name)
     if module is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
