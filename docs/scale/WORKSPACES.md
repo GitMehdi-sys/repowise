@@ -328,14 +328,14 @@ repowise workspace diagnostics --repo api     # limit to one repo
 The report covers:
 
 - **Provider / consumer counts** per repo, broken down by contract type.
-- **Unmatched consumers**, grouped by reason:
-  - `no_provider`, no provider anywhere declares a matching route/service/topic.
-  - `internal_only`, the only matching provider is in the same repo + service, so the call is intra-service and intentionally not surfaced as a cross-repo link.
+- **Unmatched consumers**, grouped by reason. Each call is named (HTTP, gRPC and topics first); table reads collapse to one line per repo.
+  - `no_provider`, a dangling call: no provider anywhere declares a matching route/service/topic/table.
   - `unlinked`, a cross-service provider with a matching id exists, but no link formed (a candidate worth inspecting).
   - `external_host`, the call targets a literal third-party host (Stripe, Formspree, ...) that is not a workspace service, so it is intentionally excluded from matching.
-- **Orphan providers**, endpoints declared but never consumed by any repo.
+- **In-service consumers** (`in_service_consumers`, reason `internal_only`): the only matching provider is in the same repo + service. They are served, so they are counted apart and never listed as unmatched.
+- **Orphan providers**, endpoints declared but never consumed by any repo. One row per repo, service and id; a table declared in a model and a migration lists the second file under `other_files`.
 - **Weak links**, matched links below the confidence threshold.
-- **Extraction coverage**: how many contracts came from the parsed symbol table (`index`) versus a text dialect (`regex`), and how many HTTP client calls were located but could not be resolved to an endpoint. The HTTP coverage percentage is calls resolved over calls located, plus one per file that makes a network call (a client library, channel or raw request) no dialect read, so an unsupported client lowers the figure instead of dropping out of it. Each such file counts once, so it is a floor on what was missed, not total recall. It is the figure that turns a large orphan-provider count from alarming into explained.
+- **Extraction coverage**: how many contracts came from the parsed symbol table (`index`) versus a text dialect (`regex`), and how many HTTP client calls were located but could not be resolved to an endpoint. The HTTP coverage percentage is calls resolved over calls located, plus one per file that makes a network call (a client library, channel or raw request) no dialect read, so an unsupported client lowers the figure instead of dropping out of it. Each such file counts once, so it is a floor on what was missed, not total recall. It is the figure that turns a large orphan-provider count from alarming into explained. A call read is not a call linked, so the headline leads with the HTTP calls that linked to another service (`http_consumers_linked`, `http_link_coverage`, same denominator) and then says where the read but unlinked calls went.
 
 The same data is available over REST at `GET /api/workspace/diagnostics` and is embedded in the system graph artifact's `diagnostics` block.
 
