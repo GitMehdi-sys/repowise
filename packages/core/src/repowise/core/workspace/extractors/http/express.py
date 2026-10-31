@@ -36,10 +36,7 @@ if TYPE_CHECKING:
     from ..base import ScanContext
 
 # app.use('/prefix', router) — a cross-file (or in-file) router mount.
-_APP_USE_RE = re.compile(
-    r"""\.use\s*\(\s*['"]([^'"]+)['"]\s*,\s*"""
-    r"""([\w.]+?)(?:\.routes\s*\(\s*\)|(?![\w.]|\s*\())"""
-)
+_APP_USE_RE = re.compile(r"""\.use\s*\(\s*['"]([^'"]+)['"]\s*,\s*([\w.]+)""")
 
 
 class ExpressDialect:
